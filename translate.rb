@@ -30,15 +30,22 @@ def translate_subtitles(input_srt, output_srt, target_language)
   translate = Google::Cloud::Translate::V2.new
   translated_lines = []
   translation_count = 0
+  cache_hit_count = 0
+  @translations_cache ||= {}
+
   input_srt.each_line do |line|
     if line.strip =~ /^\d/ || line.strip !~ /[A-Za-z]+/
       translated_lines << line
+    elsif @translations_cache.key?(line.strip)
+      translated_lines << @translations_cache[line]
+      cache_hit_count += 1
     else
       # Translate the subtitle line
       puts "Translating: #{line.strip}"
       translated_text = translate.translate(line.strip, to: target_language)
       translation_count += 1
       translated_lines << translated_text.text + "\n"
+      @translations_cache[line.strip] = translated_text.text
     end
   end
 
@@ -47,7 +54,7 @@ def translate_subtitles(input_srt, output_srt, target_language)
     translated_lines.each { |line| file.write(line) }
   end
 
-  puts "Translated subtitles saved to #{output_srt}. Made #{translation_count} API calls."
+  puts "Translated subtitles saved to #{output_srt}. Made #{translation_count} API calls. #{cache_hit_count} cache hits."
 end
 
 # gather the CLI options
