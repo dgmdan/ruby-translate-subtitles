@@ -74,7 +74,7 @@ OptionParser.new do |opts|
     options[:language] = l
   end
 
-  # see https://trac.ffmpeg.org/wiki/Map for details on what "0:s:0" implies
+  # see README.md for details on what the STREAM value means
   opts.on("-s", "--stream STREAM", "Which subtitle stream to use (for example '0:s:0')") do |s|
     options[:stream] = s
   end

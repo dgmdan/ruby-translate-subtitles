@@ -34,3 +34,5 @@ input_index:stream_type:stream_index
 * `input_index` refers to which input file since ffmpeg allows multiple. this should be 0 when translating one video.
 * `stream_type` is always `s`. it refers to the subtitle stream type.
 * `stream_index` refers to which subtitle track we want to use as the source content, starting at 0 for the first track.
+
+See [ffmpeg docs](https://trac.ffmpeg.org/wiki/Map) for more.
