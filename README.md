@@ -17,6 +17,20 @@ ruby script that takes a video file with subtitles, extracts the subtitles, tran
   
   `--output`: Path to save the translated .srt file (containing the translated subtitles)
   
-  `--stream`: which stream to use as source language (for example '0:s:0' for first subtitle track)
+  `--stream`: which stream to use as source language (for example '0:s:0' for first subtitle track. see "Format of the stream argument" section below) 
   
   `--language`: target language for the translation (for example 'es' for Spanish)
+
+### Format of the stream argument
+
+The value you send here determines which subtitles are used as the source content.
+Ultimately, it gets passed to `ffmpeg` in the `-map` arg.
+ffmpeg requires the value to be in this format:
+
+```
+input_index:stream_type:stream_index
+```
+
+* `input_index` refers to which input file since ffmpeg allows multiple. this should be 0 when translating one video.
+* `stream_type` is always `s`. it refers to the subtitle stream type.
+* `stream_index` refers to which subtitle track we want to use as the source content, starting at 0 for the first track.
