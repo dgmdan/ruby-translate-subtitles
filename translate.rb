@@ -1,5 +1,6 @@
 #!/usr/bin/env ruby
 
+require 'cgi'
 require 'open3'
 require 'google/cloud/translate/v2'
 require 'optparse'
@@ -34,18 +35,21 @@ def translate_subtitles(input_srt, output_srt, target_language)
   @translations_cache ||= {}
 
   input_srt.each_line do |line|
-    if line.strip =~ /^\d/ || line.strip !~ /[A-Za-z]+/
+    # "unescape" HTML entities like &amp;
+    line = CGI.unescapeHTML line.strip
+
+    if line =~ /^\d/ || line !~ /[A-Za-z]+/
       translated_lines << line
-    elsif @translations_cache.key?(line.strip)
+    elsif @translations_cache.key? line
       translated_lines << @translations_cache[line]
       cache_hit_count += 1
     else
       # Translate the subtitle line
-      puts "Translating: #{line.strip}"
-      translated_text = translate.translate(line.strip, to: target_language)
+      puts "Translating: #{line}"
+      translated_text = translate.translate line, to: target_language
       translation_count += 1
       translated_lines << translated_text.text + "\n"
-      @translations_cache[line.strip] = translated_text.text
+      @translations_cache[line] = translated_text.text
     end
   end
 
