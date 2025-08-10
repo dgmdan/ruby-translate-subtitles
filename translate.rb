@@ -5,13 +5,22 @@ require 'open3'
 require 'google/cloud/translate/v2'
 require 'optparse'
 require 'tempfile'
+require 'fileutils'
 
-# usage: ./translate.rb --input input_video.mkv --output translated_subtitles.srt --language es --stream 0:s:0
+# usage examples:
+#   Single file:
+#     ./translate.rb --input-file input_video.mkv --output translated_subtitles.srt --language es --stream 0:s:0
 #
-#   --input: Path to the .mkv video file.
-#   --output: Path to save the translated .srt file (containing the translated subtitles)
-#   --stream: which stream to use as source language (for example '0:s:0' for first subtitle track)
-#   --language: target language for the translation (for example 'es' for Spanish)
+#   Whole folder (all .mkv files):
+#     ./translate.rb --input-folder /path/to/folder --output /path/to/output_folder --language es --stream 0:s:0
+#
+# Options:
+#   --input-file: Path to a single .mkv video file.
+#   --input-folder: Path to a folder containing .mkv files to process.
+#   --output: For --input-file, path to save the translated .srt file.
+#             For --input-folder, optional path to an output directory (defaults to the input folder).
+#   --stream: Which stream to use as source language (for example '0:s:0' for first subtitle track)
+#   --language: Target language for the translation (for example 'es' for Spanish)
 
 # extract the first subtitle track from an MKV video
 def extract_subtitles(video_path, output_srt, stream)
@@ -66,11 +75,15 @@ options = {}
 OptionParser.new do |opts|
   opts.banner = "Usage: ./translate.rb [options]"
 
-  opts.on("-i", "--input INPUT", "Path to the input MKV video file") do |v|
-    options[:input] = v
+  opts.on("-f", "--input-file FILE", "Path to the input MKV video file") do |v|
+    options[:input_file] = v
   end
 
-  opts.on("-o", "--output OUTPUT", "Path to save the translated SRT file") do |t|
+  opts.on("-F", "--input-folder FOLDER", "Path to a folder containing MKV files to translate") do |v|
+    options[:input_folder] = v
+  end
+
+  opts.on("-o", "--output OUTPUT", "For file mode: path to save the translated SRT file. For folder mode: output directory (optional)") do |t|
     options[:output] = t
   end
 
@@ -84,8 +97,59 @@ OptionParser.new do |opts|
   end
 end.parse!
 
-# extract and translate subtitles
-Tempfile.create(%w[original .srt], '/tmp') do |original_srt|
-  extract_subtitles options[:input], original_srt, options[:stream]
-  translate_subtitles original_srt, options[:output], options[:language]
+# validate input options
+if options[:input_file] && options[:input_folder]
+  abort "Please specify either --input-file or --input-folder, not both."
 end
+
+if !options[:input_file] && !options[:input_folder]
+  abort "You must specify either --input-file or --input-folder. See --help for usage."
+end
+
+if options[:language].nil? || options[:stream].nil?
+  abort "--language and --stream are required."
+end
+
+# process single file mode
+if options[:input_file]
+  unless File.file?(options[:input_file])
+    abort "Input file not found: #{options[:input_file]}"
+  end
+  if options[:output].nil?
+    abort "--output is required when using --input-file."
+  end
+  output_path = options[:output]
+  Tempfile.create(%w[original .srt], '/tmp') do |original_srt|
+    extract_subtitles options[:input_file], original_srt, options[:stream]
+    translate_subtitles original_srt, output_path, options[:language]
+  end
+  exit 0
+end
+
+# process folder mode
+folder = options[:input_folder]
+unless Dir.exist?(folder)
+  abort "Input folder not found: #{folder}"
+end
+
+# Determine output directory
+output_dir = options[:output] && !options[:output].empty? ? options[:output] : folder
+FileUtils.mkdir_p(output_dir) unless Dir.exist?(output_dir)
+
+# Collect MKV files in the folder (non-recursive)
+video_files = Dir.glob(File.join(folder, '*.{mkv,MKV}'))
+if video_files.empty?
+  puts "No MKV files found in folder: #{folder}"
+  exit 0
+end
+
+video_files.each do |video_path|
+  base = File.basename(video_path, File.extname(video_path))
+  output_srt = File.join(output_dir, base + '.srt')
+  Tempfile.create(%w[original .srt], '/tmp') do |original_srt|
+    extract_subtitles video_path, original_srt, options[:stream]
+    translate_subtitles original_srt, output_srt, options[:language]
+  end
+end
+
+puts "Done. Translated #{video_files.size} file(s)."

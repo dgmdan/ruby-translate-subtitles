@@ -8,18 +8,31 @@ ruby script that takes a video file with subtitles, extracts the subtitles, tran
 1. Create a [Google Cloud account](https://cloud.google.com/cloud-console?hl=en). Then make a new project, download API credentials, add a billing method, and activate the Cloud Translation API.
 1. Set a local environment variable `GOOGLE_CLOUD_KEY` with your Google Cloud API key.
 1. Set a local environment variable `GOOGLE_CLOUD_PROJECT` with your Google Cloud project name.
-1. Run the script:
+1. Run the script
+
+Single file:
 ```
-./translate.rb --input input_video.mkv --output translated_subtitles.srt --language es --stream 0:s:0
+./translate.rb --input-file input_video.mkv --output translated_subtitles.srt --language es --stream 0:s:0
 ```
 
-  `--input`: Path to the .mkv video file.
+Folder (all .mkv files in a folder):
+```
+./translate.rb --input-folder /path/to/folder --output /path/to/output_folder --language es --stream 0:s:0
+```
+
+Options:
+
+  `--input-file`: Path to a single `.mkv` video file.
   
-  `--output`: Path to save the translated .srt file (containing the translated subtitles)
+  `--input-folder`: Path to a folder containing `.mkv` files to process. All `.mkv` files in that folder (non-recursive) will be translated.
+  
+  `--output`: For `--input-file`, path to save the translated `.srt` file (containing the translated subtitles). For `--input-folder`, optional path to an output directory. If omitted, `.srt` files are written next to their source videos.
   
   `--stream`: which stream to use as source language (for example '0:s:0' for first subtitle track. see "Format of the stream argument" section below) 
   
   `--language`: target language for the translation (for example 'es' for Spanish)
+
+Note: The previous `--input` option has been replaced by `--input-file` and `--input-folder`.
 
 ### Format of the stream argument
 
