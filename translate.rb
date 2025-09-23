@@ -43,14 +43,17 @@ def translate_subtitles(input_srt, output_srt, target_language)
   cache_hit_count = 0
   @translations_cache ||= {}
 
-  input_srt.each_line do |line|
+  input_srt.each_line do |raw_line|
+    # Normalize to UTF-8 and remove trailing newline, replacing invalid/undefined bytes
+    line = raw_line.encode('UTF-8', invalid: :replace, undef: :replace, replace: '').chomp
     # "unescape" HTML entities like &amp;
-    line = CGI.unescapeHTML line.strip
+    line = CGI.unescapeHTML(line)
 
     if line =~ /^\d/ || line !~ /[A-Za-z]+/
-      translated_lines << line
+      # Keep index/timecode and other non-dialogue lines as-is, with newline
+      translated_lines << line + "\n"
     elsif @translations_cache.key? line
-      translated_lines << @translations_cache[line]
+      translated_lines << @translations_cache[line] + "\n"
       cache_hit_count += 1
     else
       # Translate the subtitle line
@@ -63,7 +66,7 @@ def translate_subtitles(input_srt, output_srt, target_language)
   end
 
   # Save the translated subtitles
-  File.open(output_srt, 'w') do |file|
+  File.open(output_srt, 'w:UTF-8') do |file|
     translated_lines.each { |line| file.write(line) }
   end
 
