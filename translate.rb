@@ -145,7 +145,7 @@ end
 
 video_files.each do |video_path|
   base = File.basename(video_path, File.extname(video_path))
-  output_srt = File.join(output_dir, base + '.srt')
+  output_srt = File.join(output_dir, base + '.' + options[:language] + '.srt')
   Tempfile.create(%w[original .srt], '/tmp') do |original_srt|
     extract_subtitles video_path, original_srt, options[:stream]
     translate_subtitles original_srt, output_srt, options[:language]
