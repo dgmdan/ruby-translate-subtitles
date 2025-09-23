@@ -25,7 +25,7 @@ require 'fileutils'
 # extract the first subtitle track from an MKV video
 def extract_subtitles(video_path, output_srt, stream)
   puts "extracting subtitles from #{video_path} to #{output_srt.path}"
-  command = "ffmpeg -i \"#{video_path}\" -map #{stream} \"#{output_srt.path}\""
+  command = "ffmpeg -y -i \"#{video_path}\" -map #{stream} \"#{output_srt.path}\""
   puts "Command: #{command}"
   if system(command)
     puts "Subtitles extracted successfully to #{output_srt.path}"
