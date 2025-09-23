@@ -10,9 +10,14 @@ ruby script that takes a video file with subtitles, extracts the subtitles, tran
 1. Set a local environment variable `GOOGLE_CLOUD_PROJECT` with your Google Cloud project name.
 1. Run the script
 
-Single file:
+Single video file:
 ```
 ./translate.rb --input-file input_video.mkv --output translated_subtitles.srt --language es --stream 0:s:0
+```
+
+Single SRT file (no video, no ffmpeg extraction):
+```
+./translate.rb --input-srt input_subtitles.srt --output translated_subtitles.srt --language es
 ```
 
 Folder (all .mkv files in a folder):

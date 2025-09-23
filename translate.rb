@@ -83,6 +83,10 @@ OptionParser.new do |opts|
     options[:input_folder] = v
   end
 
+  opts.on("-S", "--input-srt FILE", "Path to an input SRT file to translate (skips ffmpeg extraction)") do |v|
+    options[:input_srt] = v
+  end
+
   opts.on("-o", "--output OUTPUT", "For file mode: path to save the translated SRT file. For folder mode: output directory (optional)") do |t|
     options[:output] = t
   end
@@ -98,16 +102,32 @@ OptionParser.new do |opts|
 end.parse!
 
 # validate input options
-if options[:input_file] && options[:input_folder]
-  abort "Please specify either --input-file or --input-folder, not both."
+modes = [options[:input_file], options[:input_folder], options[:input_srt]].compact
+if modes.size != 1
+  abort "Please specify exactly one of --input-file, --input-folder, or --input-srt."
 end
 
-if !options[:input_file] && !options[:input_folder]
-  abort "You must specify either --input-file or --input-folder. See --help for usage."
+if options[:language].nil?
+  abort "--language is required."
 end
 
-if options[:language].nil? || options[:stream].nil?
-  abort "--language and --stream are required."
+# --stream is only required for video inputs (file or folder)
+if (options[:input_file] || options[:input_folder]) && options[:stream].nil?
+  abort "--stream is required when using --input-file or --input-folder."
+end
+
+# process SRT file mode
+if options[:input_srt]
+  unless File.file?(options[:input_srt])
+    abort "Input SRT file not found: #{options[:input_srt]}"
+  end
+  if options[:output].nil?
+    abort "--output is required when using --input-srt."
+  end
+  File.open(options[:input_srt], 'r') do |srt|
+    translate_subtitles srt, options[:output], options[:language]
+  end
+  exit 0
 end
 
 # process single file mode
