@@ -2,12 +2,20 @@
 
 ruby script that takes a video file with subtitles, extracts the subtitles, translates it to another language + saves the translated subtitles
 
+## Translation services
+
+Translation happens through either OpenAI (default) or Google Cloud Translate. The script chooses the provider by inspecting your environment:
+
+- Set `OPENAI_API_KEY` to use the OpenAI API by default.
+- If you prefer Google Cloud, also set `GOOGLE_CLOUD_KEY` and `GOOGLE_CLOUD_PROJECT`; the tool will fall back to Google when OpenAI credentials are missing.
+- You can force the provider by setting `TRANSLATION_SERVICE=openai` or `TRANSLATION_SERVICE=google`, but the mapped credentials must still be available.
+
+If neither credential set is present, the script aborts with an error indicating the missing variables.
+
 ## How to use
 
 1. Clone this repo
-1. Create a [Google Cloud account](https://cloud.google.com/cloud-console?hl=en). Then make a new project, download API credentials, add a billing method, and activate the Cloud Translation API.
-1. Set a local environment variable `GOOGLE_CLOUD_KEY` with your Google Cloud API key.
-1. Set a local environment variable `GOOGLE_CLOUD_PROJECT` with your Google Cloud project name.
+1. Make sure you have the desired translation provider credentials configured in your environment (see the "Translation services" section above).
 1. Run the script
 
 Single video file:

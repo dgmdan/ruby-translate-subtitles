@@ -1,11 +1,14 @@
 #!/usr/bin/env ruby
 
 require 'cgi'
+require 'json'
+require 'net/http'
 require 'open3'
 require 'google/cloud/translate/v2'
 require 'optparse'
 require 'tempfile'
 require 'fileutils'
+require 'uri'
 
 # usage examples:
 #   Single file:
@@ -35,42 +38,158 @@ def extract_subtitles(video_path, output_srt, stream)
   end
 end
 
-# translate subtitles using Google Translate API
-def translate_subtitles(input_srt, output_srt, target_language)
-  translate = Google::Cloud::Translate::V2.new
-  translated_lines = []
-  translation_count = 0
-  cache_hit_count = 0
-  @translations_cache ||= {}
+class SubtitleTranslator
+  attr_reader :service_name
 
-  input_srt.each_line do |raw_line|
-    # Normalize to UTF-8 and remove trailing newline, replacing invalid/undefined bytes
+  def initialize(target_language)
+    @target_language = target_language
+    @cache = {}
+    @translation_count = 0
+    @cache_hit_count = 0
+    @service_name = determine_service
+    @openai_model = ENV['OPENAI_MODEL'] || 'gpt-3.5-turbo'
+    @openai_temperature = (ENV['OPENAI_TEMPERATURE'] || '0.1').to_f
+    @client = build_client
+    puts "Using #{@service_name.to_s.capitalize} for translation."
+  end
+
+  def translate(input_io, output_path)
+    translated_lines = []
+
+    input_io.each_line do |raw_line|
+      line = normalize_line(raw_line)
+
+      if line =~ /^\d/ || line !~ /[A-Za-z]+/
+        translated_lines << line + "\n"
+      elsif @cache.key?(line)
+        translated_lines << @cache[line] + "\n"
+        @cache_hit_count += 1
+      else
+        puts "Translating: #{line}"
+        translated_text = translate_line(line)
+        @translation_count += 1
+        translated_lines << translated_text + "\n"
+        @cache[line] = translated_text
+      end
+    end
+
+    File.open(output_path, 'w:UTF-8') do |file|
+      translated_lines.each { |line| file.write(line) }
+    end
+
+    puts "Translated subtitles saved to #{output_path}. Made #{@translation_count} API calls. #{@cache_hit_count} cache hits."
+  end
+
+  private
+
+  def normalize_line(raw_line)
     line = raw_line.encode('UTF-8', invalid: :replace, undef: :replace, replace: '').chomp
-    # "unescape" HTML entities like &amp;
-    line = CGI.unescapeHTML(line)
+    CGI.unescapeHTML(line)
+  end
 
-    if line =~ /^\d/ || line !~ /[A-Za-z]+/
-      # Keep index/timecode and other non-dialogue lines as-is, with newline
-      translated_lines << line + "\n"
-    elsif @translations_cache.key? line
-      translated_lines << @translations_cache[line] + "\n"
-      cache_hit_count += 1
+  def translate_line(line)
+    case @service_name
+    when :openai
+      translate_with_openai(line)
+    when :google
+      translate_with_google(line)
     else
-      # Translate the subtitle line
-      puts "Translating: #{line}"
-      translated_text = translate.translate line, to: target_language
-      translation_count += 1
-      translated_lines << translated_text.text + "\n"
-      @translations_cache[line] = translated_text.text
+      raise "Unsupported translation service: #{@service_name}"
     end
   end
 
-  # Save the translated subtitles
-  File.open(output_srt, 'w:UTF-8') do |file|
-    translated_lines.each { |line| file.write(line) }
+  def translate_with_openai(line)
+    messages = [
+      { role: "system", content: "You are a concise translator." },
+      { role: "user", content: "Translate the following text into #{@target_language}: #{line}" }
+    ]
+
+    response = openai_chat_completion(messages)
+    response.dig("choices", 0, "message", "content")&.strip || ''
+  rescue StandardError => e
+    abort "OpenAI translation error: #{e.message}"
   end
 
-  puts "Translated subtitles saved to #{output_srt}. Made #{translation_count} API calls. #{cache_hit_count} cache hits."
+  def translate_with_google(line)
+    translation = @client.translate line, to: @target_language
+    translation.text
+  rescue StandardError => e
+    abort "Google Cloud translation error: #{e.message}"
+  end
+
+  def determine_service
+    override = ENV['TRANSLATION_SERVICE']&.downcase
+    openai_available = ENV['OPENAI_API_KEY']
+    google_available = ENV['GOOGLE_CLOUD_KEY'] && ENV['GOOGLE_CLOUD_PROJECT']
+
+    case override
+    when 'openai'
+      return :openai if openai_available
+      abort "Requested OpenAI service via TRANSLATION_SERVICE but OPENAI_API_KEY is missing."
+    when 'google'
+      return :google if google_available
+      abort "Requested Google service via TRANSLATION_SERVICE but GOOGLE_CLOUD_KEY/GOOGLE_CLOUD_PROJECT are missing."
+    end
+
+    return :openai if openai_available
+    return :google if google_available
+
+    abort "Missing translation credentials. Set OPENAI_API_KEY or GOOGLE_CLOUD_KEY/GOOGLE_CLOUD_PROJECT."
+  end
+
+  def build_client
+    case @service_name
+    when :openai
+      nil
+    when :google
+      Google::Cloud::Translate::V2.new(
+        key: ENV['GOOGLE_CLOUD_KEY'],
+        project: ENV['GOOGLE_CLOUD_PROJECT']
+      )
+    end
+  end
+
+  def openai_chat_completion(messages)
+    uri = URI.parse("https://api.openai.com/v1/chat/completions")
+    request = Net::HTTP::Post.new(uri)
+    request["Content-Type"] = "application/json"
+    request["Authorization"] = "Bearer #{ENV['OPENAI_API_KEY']}"
+    request.body = {
+      model: @openai_model,
+      temperature: @openai_temperature,
+      max_tokens: 1024,
+      messages: messages
+    }.compact.to_json
+
+    response = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true) do |http|
+      http.request(request)
+    end
+
+    body = response.body
+    parsed = parse_openai_response(body, response)
+
+    if response.is_a?(Net::HTTPSuccess)
+      return parsed if parsed
+      raise "OpenAI response was not JSON: #{sanitize_body(body)}"
+    end
+
+    message = parsed&.dig("error", "message") || response.message
+    message = sanitize_body(body) if message.nil? || message.empty?
+    raise "OpenAI API error: #{message}"
+  end
+
+  def parse_openai_response(body, response)
+    content_type = response["Content-Type"] || response["content-type"]
+    return nil unless content_type&.include?("application/json")
+
+    JSON.parse(body)
+  rescue JSON::ParserError
+    nil
+  end
+
+  def sanitize_body(body)
+    body.to_s.strip.gsub(/\s+/, ' ')[0, 200]
+  end
 end
 
 # gather the CLI options
@@ -120,6 +239,7 @@ if (options[:input_file] || options[:input_folder]) && options[:stream].nil?
 end
 
 # process SRT file mode
+translator = nil
 if options[:input_srt]
   unless File.file?(options[:input_srt])
     abort "Input SRT file not found: #{options[:input_srt]}"
@@ -127,8 +247,9 @@ if options[:input_srt]
   if options[:output].nil?
     abort "--output is required when using --input-srt."
   end
+  translator ||= SubtitleTranslator.new(options[:language])
   File.open(options[:input_srt], 'r') do |srt|
-    translate_subtitles srt, options[:output], options[:language]
+    translator.translate(srt, options[:output])
   end
   exit 0
 end
@@ -144,7 +265,8 @@ if options[:input_file]
   output_path = options[:output]
   Tempfile.create(%w[original .srt], '/tmp') do |original_srt|
     extract_subtitles options[:input_file], original_srt, options[:stream]
-    translate_subtitles original_srt, output_path, options[:language]
+    translator ||= SubtitleTranslator.new(options[:language])
+    translator.translate(original_srt, output_path)
   end
   exit 0
 end
@@ -166,12 +288,13 @@ if video_files.empty?
   exit 0
 end
 
+translator ||= SubtitleTranslator.new(options[:language])
 video_files.each do |video_path|
   base = File.basename(video_path, File.extname(video_path))
   output_srt = File.join(output_dir, base + '.' + options[:language] + '.srt')
   Tempfile.create(%w[original .srt], '/tmp') do |original_srt|
     extract_subtitles video_path, original_srt, options[:stream]
-    translate_subtitles original_srt, output_srt, options[:language]
+    SubtitleTranslator.new(options[:language]).translate(original_srt, output_srt)
   end
 end
 
