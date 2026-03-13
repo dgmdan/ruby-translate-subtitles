@@ -2,6 +2,8 @@
 
 ruby script that takes a video file with subtitles, extracts the subtitles, translates it to another language + saves the translated subtitles
 
+⚠️ **Dependency**: `ffmpeg` is required for extracting subtitles from video sources; install it with `brew install ffmpeg` before running the script.
+
 ## Translation services
 
 Translation happens through either OpenAI (default) or Google Cloud Translate. The script chooses the provider by inspecting your environment:
