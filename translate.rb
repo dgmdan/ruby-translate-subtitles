@@ -47,7 +47,7 @@ class SubtitleTranslator
     @translation_count = 0
     @cache_hit_count = 0
     @service_name = determine_service
-    @openai_model = ENV['OPENAI_MODEL'] || 'gpt-3.5-turbo'
+    @openai_model = ENV['OPENAI_MODEL'] || 'gpt-4o-mini'
     @openai_temperature = (ENV['OPENAI_TEMPERATURE'] || '0.1').to_f
     @client = build_client
     puts "Using #{@service_name.to_s.capitalize} for translation."
