@@ -14,6 +14,8 @@ Translation happens through either OpenAI (default) or Google Cloud Translate. T
 
 If neither credential set is present, the script aborts with an error indicating the missing variables.
 
+Subtitles are translated in batches rather than with one API request per line. Each line is tagged while it is translated, so the original subtitle cue numbers and timestamps are copied back unchanged. The default batch size is 6,000 characters; set `TRANSLATION_BATCH_SIZE` to adjust it if a provider has a smaller or larger request limit.
+
 ## How to use
 
 1. Clone this repo
